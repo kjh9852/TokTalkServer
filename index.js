@@ -9,7 +9,7 @@ const io = require("socket.io")(httpServer, {
   },
 });
 
-const port = 80;
+const port = process.env.PORT || 80;
 
 const adminCode = process.env.ADMIN_CODE;
 const adminUser = new Set();
