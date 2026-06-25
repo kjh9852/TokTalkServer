@@ -4,7 +4,7 @@ const httpServer = require("http").createServer();
 
 const io = require("socket.io")(httpServer, {
   cors: {
-    origin: "http://localhost:5173",
+    origin: ["http://localhost:5173", "https://tok-talk.vercel.app/"],
     methods: ["GET", "POST"],
   },
 });
