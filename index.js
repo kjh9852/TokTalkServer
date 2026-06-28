@@ -1,11 +1,11 @@
-require("dotenv").config();
+require('dotenv').config();
 
-const httpServer = require("http").createServer();
+const httpServer = require('http').createServer();
 
-const io = require("socket.io")(httpServer, {
+const io = require('socket.io')(httpServer, {
   cors: {
-    origin: ["http://localhost:5173", "https://tok-talk.vercel.app"],
-    methods: ["GET", "POST"],
+    origin: ['http://localhost:5173', 'https://tok-talk.vercel.app'],
+    methods: ['GET', 'POST'],
   },
 });
 
@@ -25,22 +25,18 @@ function handleMessage(socket, item) {
   const player = players[socket.id];
   if (!player) return;
 
-  const nickname = player?.nickname || "익명";
+  const nickname = player?.nickname || '익명';
   const playerId = socket.id;
 
   const currentMessage = item.message;
   player.currentMessage = currentMessage;
 
-  io.emit("receive message", {
+  io.emit('receiveMessage', {
     id: playerId,
     author: nickname,
     message: item.message,
     time: new Date().toLocaleTimeString(),
   });
-
-  // setTimeout(() => {
-  //   clearPlayerMessage(playerId);
-  // }, 3000);
 
   if (player.messageTimer) {
     console.log(`🧹 기존 타이머 제거: ${playerId}`);
@@ -55,79 +51,72 @@ function handleMessage(socket, item) {
   }, 3000);
 
   player.isTyping = false;
-  socket.broadcast.emit("stopTyping", { id: playerId });
+  socket.broadcast.emit('stopTyping', { id: playerId });
 }
 
 function clearPlayerMessage(id) {
   if (!players[id]) return;
-  players[id].currentMessage = "";
-  io.emit("clear message", { id });
+  players[id].currentMessage = '';
+  io.emit('clearMessage', { id });
 }
 
-io.on("connection", (socket) => {
+io.on('connection', socket => {
   players[socket.id] = {
     id: socket.id,
     position: [0, 0, 0],
     rotation: [0, 0, 0, 0],
     isTyping: false,
-    currentMessage: "",
+    currentMessage: '',
   };
 
-  socket.on("enterAdminEnter", (code) => {
+  socket.on('enterAdminEnter', code => {
     if (code === adminCode) {
       adminUser.add(socket.id);
-      socket.emit("adminConfirmed");
+      socket.emit('adminConfirmed');
     }
   });
 
-  socket.on("adminAction", (data) => {
+  socket.on('adminAction', data => {
     if (!adminUser.has(socket.id)) return;
   });
 
-  socket.on("exitAdminMode", () => {
+  socket.on('exitAdminMode', () => {
     if (adminUser.has(socket.id)) {
       adminUser.delete(socket.id);
-      socket.emit("exitAdminModeConfirmed");
+      socket.emit('exitAdminModeConfirmed');
     }
   });
 
-  socket.on("join", ({ nickname }) => {
+  socket.on('join', ({ nickname }) => {
     if (players[socket.id]) {
       players[socket.id].nickname = nickname;
 
-      socket.emit("currentPlayers", players);
+      socket.emit('currentPlayers', players);
 
-      socket.broadcast.emit("newPlayer", {
+      socket.broadcast.emit('newPlayer', {
         id: socket.id,
         state: players[socket.id],
       });
 
-      io.emit("playerCount", Object.keys(players).length);
+      io.emit('playerCount', Object.keys(players).length);
     }
   });
 
-  socket.on("updatePlayer", ({ state }) => {
-    // 항상 socket.id를 기준으로 저장
-    // updatePlayer(socket.id, state);
-    // socket.broadcast.emit("updatePlayer", {
-    //   id: socket.id,
-    //   state: state,
-    // });
+  socket.on('updatePlayer', ({ state }) => {
     if (players[socket.id]) {
       players[socket.id] = { ...players[socket.id], ...state };
       const { messageTimer, ...safeState } = players[socket.id];
-      socket.broadcast.emit("updatePlayer", {
+      socket.broadcast.emit('updatePlayer', {
         id: socket.id,
         state: safeState,
       });
     }
   });
 
-  socket.on("nicknameUpdate", ({ nickname }) => {
+  socket.on('nicknameUpdate', ({ nickname }) => {
     if (players[socket.id]) {
       players[socket.id].nickname = nickname;
-
-      socket.broadcast.emit("nicknameUpdate", {
+      io.emit('nicknameUpdate', {
         id: socket.id,
         nickname,
       });
@@ -135,60 +124,55 @@ io.on("connection", (socket) => {
   });
 
   // 플레이어 접속 종료 처리
-  socket.on("disconnect", () => {
+  socket.on('disconnect', () => {
     delete players[socket.id];
-    io.emit("removePlayer", socket.id);
-    io.emit("playerCount", Object.keys(players).length);
+    io.emit('removePlayer', socket.id);
+    io.emit('playerCount', Object.keys(players).length);
     adminUser.delete(socket.id);
   });
 
-  socket.on("typing", () => {
+  socket.on('typing', () => {
     if (players[socket.id]) {
       players[socket.id].isTyping = true;
       console.log(players[socket.id]);
-      io.emit("typing", { id: socket.id });
+      io.emit('typing', { id: socket.id });
     }
   });
 
-  socket.on("stopTyping", () => {
+  socket.on('stopTyping', () => {
     if (players[socket.id]) {
       players[socket.id].isTyping = false;
       console.log(players[socket.id]);
-      io.emit("stopTyping", { id: socket.id });
+      io.emit('stopTyping', { id: socket.id });
     }
   });
 
-  // socket.on("send message", (item) => {
-  //   const player = players[socket.id];
-  //   if (!player) return;
+  socket.on('send message', item => handleMessage(socket, item));
 
-  //   const nickname = player?.nickname || "익명";
-  //   const playerId = socket.id;
+  socket.on('pushPlayer', ({ targetId }) => {
+    const attacker = players[socket.id];
+    const target = players[targetId];
 
-  //   player.currentMessage = item.message;
+    if (!attacker || !target) return;
 
-  //   io.emit("receive message", {
-  //     id: playerId,
-  //     author: nickname,
-  //     message: item.message,
-  //     time: new Date().toLocaleTimeString(),
-  //   });
+    const dx = target.position[0] - attacker.position[0];
+    const dz = target.position[2] - attacker.position[2];
 
-  //   setTimeout(() => {
-  //     if (players[playerId]) {
-  //       players[playerId].currentMessage = "";
-  //     }
+    const distance = Math.sqrt(dx * dx + dz * dz);
 
-  //     io.emit("clear message", { id: playerId });
-  //   }, 3000);
+    if (distance > 3) return;
+    if (distance === 0) return;
 
-  //   player.isTyping = false;
-  //   socket.broadcast.emit("stopTyping", { id: playerId });
-  // });
+    const nx = dx / distance;
+    const nz = dz / distance;
 
-  socket.on("send message", (item) => handleMessage(socket, item));
+    io.to(targetId).emit('knockback', {
+      x: nx,
+      z: nz,
+    });
+  });
 });
 
 httpServer.listen(port, () => {
-  console.log("connect", port);
+  console.log('connect', port);
 });
