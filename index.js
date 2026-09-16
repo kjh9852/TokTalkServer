@@ -1,11 +1,11 @@
-require('dotenv').config();
+require("dotenv").config();
 
-const httpServer = require('http').createServer();
+const httpServer = require("http").createServer();
 
-const io = require('socket.io')(httpServer, {
+const io = require("socket.io")(httpServer, {
   cors: {
-    origin: ['http://localhost:5173', 'https://tok-talk.vercel.app'],
-    methods: ['GET', 'POST'],
+    origin: ["https://tok-talk.vercel.app"],
+    methods: ["GET", "POST"],
   },
 });
 
@@ -15,108 +15,108 @@ const adminCode = process.env.ADMIN_CODE;
 const adminUser = new Set();
 
 let players = {};
-
-function updatePlayer(id, data) {
-  if (!players[id]) return;
-  players[id] = { ...players[id], ...data };
-}
+const messageTimer = new Map();
 
 function handleMessage(socket, item) {
   const player = players[socket.id];
   if (!player) return;
 
-  const nickname = player?.nickname || '익명';
+  const nickname = player?.nickname || "익명";
   const playerId = socket.id;
 
   const currentMessage = item.message;
   player.currentMessage = currentMessage;
 
-  io.emit('receiveMessage', {
+  io.emit("receiveMessage", {
     id: playerId,
     author: nickname,
-    message: item.message,
+    message: currentMessage,
     time: new Date().toLocaleTimeString(),
   });
 
-  if (player.messageTimer) {
-    console.log(`🧹 기존 타이머 제거: ${playerId}`);
-    clearTimeout(player.messageTimer);
+  const prevTimer = messageTimer.get(playerId);
+
+  if (prevTimer) {
+    clearTimeout(prevTimer);
   }
 
-  player.messageTimer = setTimeout(() => {
+  const timer = setTimeout(() => {
     if (player.currentMessage === currentMessage) {
       clearPlayerMessage(playerId);
-      player.messageTimer = null;
     }
+
+    messageTimer.delete(playerId);
   }, 3000);
 
+  messageTimer.set(playerId, timer);
+
   player.isTyping = false;
-  socket.broadcast.emit('stopTyping', { id: playerId });
+  socket.broadcast.emit("stopTyping", { id: playerId });
 }
 
 function clearPlayerMessage(id) {
   if (!players[id]) return;
-  players[id].currentMessage = '';
-  io.emit('clearMessage', { id });
+  players[id].currentMessage = "";
+  io.emit("clearMessage", { id });
 }
 
-io.on('connection', socket => {
+io.on("connection", (socket) => {
   players[socket.id] = {
     id: socket.id,
     position: [0, 0, 0],
     rotation: [0, 0, 0, 0],
     isTyping: false,
-    currentMessage: '',
+    currentMessage: "",
   };
 
-  socket.on('enterAdminEnter', code => {
+  socket.on("enterAdminEnter", (code) => {
     if (code === adminCode) {
       adminUser.add(socket.id);
-      socket.emit('adminConfirmed');
+      socket.emit("adminConfirmed");
     }
   });
 
-  socket.on('adminAction', data => {
+  socket.on("adminAction", (data) => {
     if (!adminUser.has(socket.id)) return;
   });
 
-  socket.on('exitAdminMode', () => {
+  socket.on("exitAdminMode", () => {
     if (adminUser.has(socket.id)) {
       adminUser.delete(socket.id);
-      socket.emit('exitAdminModeConfirmed');
+      socket.emit("exitAdminModeConfirmed");
     }
   });
 
-  socket.on('join', ({ nickname }) => {
+  socket.on("join", ({ nickname }) => {
     if (players[socket.id]) {
       players[socket.id].nickname = nickname;
 
-      socket.emit('currentPlayers', players);
+      socket.emit("currentPlayers", players);
 
-      socket.broadcast.emit('newPlayer', {
+      socket.broadcast.emit("newPlayer", {
         id: socket.id,
         state: players[socket.id],
       });
 
-      io.emit('playerCount', Object.keys(players).length);
+      io.emit("playerCount", Object.keys(players).length);
     }
   });
 
-  socket.on('updatePlayer', ({ state }) => {
+  socket.on("updatePlayer", ({ state }) => {
     if (players[socket.id]) {
       players[socket.id] = { ...players[socket.id], ...state };
-      const { messageTimer, ...safeState } = players[socket.id];
-      socket.broadcast.emit('updatePlayer', {
+
+      socket.broadcast.emit("updatePlayer", {
         id: socket.id,
-        state: safeState,
+        state: players[socket.id],
       });
     }
   });
 
-  socket.on('nicknameUpdate', ({ nickname }) => {
+  socket.on("nicknameUpdate", ({ nickname }) => {
     if (players[socket.id]) {
       players[socket.id].nickname = nickname;
-      io.emit('nicknameUpdate', {
+      io.emit("nicknameUpdate", {
         id: socket.id,
         nickname,
       });
@@ -124,32 +124,41 @@ io.on('connection', socket => {
   });
 
   // 플레이어 접속 종료 처리
-  socket.on('disconnect', () => {
+  socket.on("disconnect", () => {
+    const timer = messageTimer.get(socket.id);
+
+    if (timer) {
+      clearTimeout(timer);
+      messageTimer.delete(socket.id);
+    }
+
     delete players[socket.id];
-    io.emit('removePlayer', socket.id);
-    io.emit('playerCount', Object.keys(players).length);
+
+    io.emit("removePlayer", socket.id);
+    io.emit("playerCount", Object.keys(players).length);
+
     adminUser.delete(socket.id);
   });
 
-  socket.on('typing', () => {
+  socket.on("typing", () => {
     if (players[socket.id]) {
       players[socket.id].isTyping = true;
       console.log(players[socket.id]);
-      io.emit('typing', { id: socket.id });
+      io.emit("typing", { id: socket.id });
     }
   });
 
-  socket.on('stopTyping', () => {
+  socket.on("stopTyping", () => {
     if (players[socket.id]) {
       players[socket.id].isTyping = false;
       console.log(players[socket.id]);
-      io.emit('stopTyping', { id: socket.id });
+      io.emit("stopTyping", { id: socket.id });
     }
   });
 
-  socket.on('send message', item => handleMessage(socket, item));
+  socket.on("send message", (item) => handleMessage(socket, item));
 
-  socket.on('pushPlayer', ({ targetId }) => {
+  socket.on("pushPlayer", ({ targetId }) => {
     const attacker = players[socket.id];
     const target = players[targetId];
 
@@ -166,7 +175,7 @@ io.on('connection', socket => {
     const nx = dx / distance;
     const nz = dz / distance;
 
-    io.to(targetId).emit('knockback', {
+    io.to(targetId).emit("knockback", {
       x: nx,
       z: nz,
     });
@@ -174,5 +183,5 @@ io.on('connection', socket => {
 });
 
 httpServer.listen(port, () => {
-  console.log('connect', port);
+  console.log("connect", port);
 });
