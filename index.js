@@ -156,7 +156,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("send message", (item) => handleMessage(socket, item));
+  socket.on("sendMessage", (item) => handleMessage(socket, item));
 
   socket.on("pushPlayer", ({ targetId }) => {
     const attacker = players[socket.id];
